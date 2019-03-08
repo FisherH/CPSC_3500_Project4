@@ -145,7 +145,15 @@ void Shell::create_rpc(string fname) {
 
 // Remote procedure call on append
 void Shell::append_rpc(string fname, string data) {
- //come back to code later
+    string commandLine = "append" + fname + data + "\r\n";
+    char sendMessage[2048];
+    char received[2048];
+    strcpy(sentMessage, commandLine.c_str());
+    
+    send(cs_sock, sentMessage, sizeof(sentMessage),0);
+    recv(cs_sock, received, sizeof(received),0);
+    
+    print_response("append", received);
 }
 
 // Remote procesure call on cat
