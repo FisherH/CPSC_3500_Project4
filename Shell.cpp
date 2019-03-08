@@ -4,6 +4,11 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <vector>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <cstdlib>
+#include <cstring> 
 using namespace std;
 
 #include "Shell.h"
@@ -18,26 +23,26 @@ void Shell::mountNFS(string fs_loc) {
     struct sockaddr_in server;
     vector<string> fileSysAddr;
     size_t pos=0, foundLoc;
-    while((found=fs.loc.find_first_of(':',pos)) != string::npos)
+    while((foundLoc=fs_loc.find_first_of(':',pos)) != string::npos)
     {
-        fileSysAddr.push_back(fs_loc.subtr(pos,foundLoc-pos));
-        pos = found+1;
+        fileSysAddr.push_back(fs_loc.substr(pos,foundLoc-pos));
+        pos = foundLoc+1;
     }
     
-    fileSysAdrr.push_back(fs_loc.substr(pos));
+    fileSysAddr.push_back(fs_loc.substr(pos));
     
     //creating a socket
     cs_sock = socket(AF_INET,SOCK_STREAM,0);
     if(cs_sock <0)
     {
-        perror("error in creating the socket")
+      perror("error in creating the socket");
         exit(0);
     }
     
     //construct server address
-    server.sin_addr.s_addr= inet_addr(fs_address[0].c_str());
+    server.sin_addr.s_addr= inet_addr(fileSysAddr[0].c_str());
     server.sin_family = AF_INET;
-    server.sin_port= htons(stoi(fs_address[1]));
+    server.sin_port= htons(stoi(fileSysAddr[1]));
     
     //connect to the remote server if not will throw an error
     if(connect(cs_sock,(struct sockaddr *) &server, sizeof(server)) <0)
@@ -62,7 +67,7 @@ void Shell::unmountNFS() {
 // Remote procedure call on mkdir
 void Shell::mkdir_rpc(string dname) {
   // to implement
-    string comandLine= "mkdir" + dname +"\r\n";
+    string commandLine= "mkdir" + dname +"\r\n";
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage, commandLine.c_str());
@@ -97,8 +102,8 @@ void Shell::home_rpc() {
     strcpy(sentMessage,commandLine.c_str());
     
     //send it server
-    send(cs_stock, sentMessage, sizeof(sentMessage),0);
-    recv(cs_stock, received, sizeof(received),0);
+    send(cs_sock, sentMessage, sizeof(sentMessage),0);
+    recv(cs_sock, received, sizeof(received),0);
     
     print_response("home", received);
 }
@@ -110,7 +115,7 @@ void Shell::rmdir_rpc(string dname) {
     char received[2048];
     strcpy(sentMessage,commandLine.c_str());
     
-    send(cs_stock, sentMessage, sizeof(sentMessage),0);
+    send(cs_sock, sentMessage, sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
     
     print_response("rmdir",received);
@@ -148,12 +153,12 @@ void Shell::append_rpc(string fname, string data) {
     string commandLine = "append" + fname + data + "\r\n";
     char sendMessage[2048];
     char received[2048];
-    strcpy(sentMessage, commandLine.c_str());
+    strcpy(sendMessage, commandLine.c_str());
     
-    send(cs_sock, sentMessage, sizeof(sentMessage),0);
+    send(cs_sock, sendMessage, sizeof(sendMessage),0);
     recv(cs_sock, received, sizeof(received),0);
     
-    print_response("append", received);
+    print_response("append", received);
 }
 
 // Remote procesure call on cat
@@ -174,7 +179,7 @@ void Shell::head_rpc(string fname, int n) {
     string commandLine = "head"+ fname + to_string(n)+ "\r\n";
     char sentMessage[2048];
     char received[2048];
-    strcpy( message, commandLine.c_str());
+    strcpy( sentMessage, commandLine.c_str());
     
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -189,7 +194,7 @@ void Shell::rm_rpc(string fname) {
     char received[2048];
     strcpy(sentMessage, commandLine.c_str());
     
-    send(cs_sock, message,sizeof(sentMessage),0);
+    send(cs_sock, sentMessage,sizeof(sentMessage),0);
     recv(cs_sock, received,sizeof(received),0);
     
     print_response("rm", received);
@@ -199,7 +204,7 @@ void Shell::rm_rpc(string fname) {
 void Shell::stat_rpc(string fname) {
     string commandLine= "stat"+ fname + "\r\n";
     char* buf[2048];
-    send(cs_sock,commandLine.c_str(),strlen(command.c_str()), 0);
+    send(cs_sock,commandLine.c_str(),strlen(commandLine.c_str()), 0);
     recv(cs_sock, buf,sizeof(buf),0);
 }
 
@@ -388,3 +393,27 @@ Shell::Command Shell::parse_command(string command_str)
   return command;
 }
 
+void Shell:: print_response(string command , string response)
+{
+  stringstream ss(response);
+  string item;
+  vector<string> halfResponse;
+
+  while(getline(ss,item,'\n'))
+    {
+      halfResponse.push_back(item);
+    }
+
+  //seeing if the response was successful
+  if(stoi(response.substr(0,3))==200)
+    {
+      if(command == "ls" || command == "head" || command =="stat" || command ==
+         "cat")
+        {
+          cout<< halfResponse[3]<<endl;
+        }
+    }else
+    {
+      cout<<response<<endl;
+    }
+}
