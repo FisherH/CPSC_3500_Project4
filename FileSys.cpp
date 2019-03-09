@@ -274,7 +274,7 @@ void FileSys::ls()
 	strcat(msg, msgLength);
 	strcat(msg, "\r\n\r\n");
 	strcat(msg, buffer.c_str());
-	send(fs_sock, msg, sizeof(msg), 0);
+	send(fs_sock, 'LSSSSS', sizeof(msg), 0);
 }
 
 // create an empty data file
