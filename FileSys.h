@@ -52,12 +52,24 @@ class FileSys {
     // display stats about file or directory
     void stat(const char *name);
 
+    // Executes the command. Returns true for quit and false otherwise.
+    bool execute_command(string command_str);
+
   private:
 
     BasicFileSys bfs;	// basic file system
     short curr_dir;	// current directory
 
     int fs_sock;  // file server socket
+
+    struct Command
+    {
+        string name;
+        string file_name;
+        string append_data;
+    };
+
+    struct Command parse_command(string command_str);
 
     // Additional private variables and Helper functions - if desired
     const bool isValidDirectory(short block_num);

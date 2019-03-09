@@ -71,6 +71,7 @@ void Shell::mkdir_rpc(string dname) {
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     //send the message to server
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
@@ -86,6 +87,7 @@ void Shell::cd_rpc(string dname) {
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     //send the message to server
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
@@ -100,6 +102,7 @@ void Shell::home_rpc() {
     char sentMessage[200];
     char received[2048];
     strcpy(sentMessage,commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     //send it server
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
@@ -114,6 +117,7 @@ void Shell::rmdir_rpc(string dname) {
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage,commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -128,6 +132,7 @@ void Shell::ls_rpc() {
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage,commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock,sentMessage,sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -141,6 +146,7 @@ void Shell::create_rpc(string fname) {
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -154,6 +160,7 @@ void Shell::append_rpc(string fname, string data) {
     char sendMessage[2048];
     char received[2048];
     strcpy(sendMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock, sendMessage, sizeof(sendMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -167,6 +174,7 @@ void Shell::cat_rpc(string fname) {
     char sentMessage[2048];
     char received [2048];
     strcpy(sentMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -180,6 +188,7 @@ void Shell::head_rpc(string fname, int n) {
     char sentMessage[2048];
     char received[2048];
     strcpy( sentMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock, sentMessage, sizeof(sentMessage),0);
     recv(cs_sock, received, sizeof(received),0);
@@ -193,6 +202,7 @@ void Shell::rm_rpc(string fname) {
     char sentMessage[2048];
     char received[2048];
     strcpy(sentMessage, commandLine.c_str());
+    strcpy(received, commandLine.c_str());
     
     send(cs_sock, sentMessage,sizeof(sentMessage),0);
     recv(cs_sock, received,sizeof(received),0);
@@ -395,6 +405,7 @@ Shell::Command Shell::parse_command(string command_str)
 
 void Shell:: print_response(string command , string response)
 {
+  return;
   stringstream ss(response);
   string item;
   vector<string> halfResponse;
