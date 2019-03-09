@@ -4,7 +4,11 @@
 #ifndef FILESYS_H
 #define FILESYS_H
 
+#include <sstream>
+
 #include "BasicFileSys.h"
+
+using namespace std;
 
 class FileSys {
   
@@ -56,6 +60,8 @@ class FileSys {
     int fs_sock;  // file server socket
 
     // Additional private variables and Helper functions - if desired
+    const bool isValidDirectory(short block_num);
+
 };
 
 #endif 
