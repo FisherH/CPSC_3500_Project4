@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
   bzero((char*) &server_ad, sizeof(server_ad));
   server_ad.sin_family=AF_INET;
   server_ad.sin_addr.s_addr = INADDR_ANY;
-  server_ad.sin_port= htons(31337/*port*/);
+  server_ad.sin_port= htons(8080/*31337/*port*/);
   memset(server_ad.sin_zero, '\0', sizeof server_ad.sin_zero);
   
   
