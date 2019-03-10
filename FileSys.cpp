@@ -1,35 +1,32 @@
-// CPSC 3500: File System
-// Implements the file system commands that are available to the shell.
-
+#include <sys/socket.h>
 #include <cstring>
-#include <string>
 #include <iostream>
 #include <unistd.h>
 #include <stdio.h>
-#include <sys/socket.h>
-
+#include <stdlib.h>
+#include <errno.h>
 #include "FileSys.h"
 #include "BasicFileSys.h"
 #include "Blocks.h"
-
+#include <string>
 using namespace std;
 
-//Will be moved to FileSys.h eventually
-//Here for conviniclearence currently. 
-int FILENAME_MAX_SIZE = 30;
-//int BLOCK_SIZE = 128;
-int BLOCK_COUNT = 1024;
-//int MAX_DIR_ENTRIES = 10000;
+#define ARRAY_LENGTH(array) (sizeof((array))/sizeof((array)[0]))
 
 // mounts the file system
-void FileSys::mount(int sock) {
+void FileSys::mount(int sock) 
+{
   bfs.mount();
-  curr_dir = 1; //by default current directory is home directory, in disk block #1
-  fs_sock = sock; //use this socket to receive file system operations from the client and send back response messages
+  // by default current directory is home directory, in disk block #1
+  curr_dir = 1;
+  fs_sock = sock;
+  // use this socket to receive file system operations from the client and
+  // send back response messages
 }
 
 // unmounts the file system
-void FileSys::unmount() {
+void FileSys::unmount() 
+{
   bfs.unmount();
   close(fs_sock);
 }
@@ -37,323 +34,285 @@ void FileSys::unmount() {
 // make a directory
 void FileSys::mkdir(const char *name)
 {
-	char buffer[BLOCK_COUNT];
-	bool pass = true;
+  char buffer[1024];
+  bool error = false;
 
-	//Finish implementation
-	dirblock_t currentBlockPointer;
-	char currentFileName[FILENAME_MAX_SIZE];
-	char newFileName[FILENAME_MAX_SIZE];
-	
-	//copy the new name into the new file name array
-	strcpy(newFileName, name);
+  dirblock_t curr_block_ptr;
+  char file_name[MAX_FNAME_SIZE + 1];
+  char curr_file_name[MAX_FNAME_SIZE + 1];
+  strcpy(file_name, name);
 
-	bfs.read_block(curr_dir, (void*)&currentBlockPointer);
+  bfs.read_block(curr_dir, (void*)&curr_block_ptr);
+  if(!error){
+    for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
+      strcpy(curr_file_name, curr_block_ptr.dir_entries[i].name);
+      if (strcmp(curr_file_name, file_name) == 0){
+        strcpy(buffer, "502: File exists\r\nLength: 0\r\n\r\n");
+        error = true;
+      }
+    }
+  }
+  if(!error){
+    if(strlen(name) > MAX_FNAME_SIZE +1){
+      strcpy(buffer, "504: File name is too long\r\nLength: 0\r\n\r\n");
+      error = true;
+    }
+  }
 
-	//Check if file path already exists
-	if(pass)
-	{
-		for(long i = 0; i < MAX_DIR_ENTRIES; i++)
-		{
-			strcpy(currentFileName, currentBlockPointer.dir_entries[i].name);
-			if(strcmp(currentFileName, newFileName) == 0)
-			{
-				strcpy(buffer, "502: File exists\r\n");
-				pass = false;
-			}
-		}
-	}
+  // make new free block
+  short block_num = bfs.get_free_block();
+  if (block_num == 0){
+    block_num = bfs.get_free_block();
+    if (block_num == 0){
+      if(!error){
+        strcpy(buffer, "505: Disk is full\r\nLength: 0\r\n\r\n");
+        error = true;
+      }
+    }
+  }
 
-	//Check if file name is too long
-	if(pass)
-	{
-		if(strlen(name) > FILENAME_MAX_SIZE + 1) 
-		{
-			strcpy(buffer, "504: File name is too long\r\n");
-			pass = false;
-		}
-	}
+  if(!error){
+    if (curr_block_ptr.num_entries == MAX_DIR_ENTRIES){
+      strcpy(buffer, "506: Directory is full\r\nLength: 0\r\n\r\n");
+      error = true;
+    }
+  }
 
-	//Create a new freeblock
-	short block_num = bfs.get_free_block();
-	if (block_num == 0)
-	{
-		block_num = bfs.get_free_block();
-		if(block_num == 0)
-		{
-			if(pass)
-			{
-				strcpy(buffer, "505: Disk is full\r\n");
-				pass = false;
-			}
-		}
-	}
+  //fill new directory block_num to hold 0 to show blocks are unused
+  if(!error){
+    dirblock_t new_block;
+    new_block.magic = DIR_MAGIC_NUM;
+    new_block.num_entries = 0;
+    for (int i = 0; i < MAX_DIR_ENTRIES; i++){
+      new_block.dir_entries[i].block_num = 0;
+      new_block.dir_entries[i].name[0] = '\0';
+    }
+    bfs.write_block(block_num, (void*)&new_block);
+    strcpy(buffer, "200 OK\r\nLength: 0\r\n\r\n");
 
-	//check if the directory is full
-	if(pass)
-	{
-		if(currentBlockPointer.num_entries == MAX_DIR_ENTRIES)
-		{
-			strcpy(buffer, "506: Directory is full\r\n");
-			pass = false;
-		}
-	}
+    strcat(buffer, file_name);
+    strcpy(curr_block_ptr.dir_entries[curr_block_ptr.num_entries].name,
+           file_name);
+    curr_block_ptr.dir_entries[curr_block_ptr.num_entries].block_num =
+      block_num;
+    curr_block_ptr.num_entries++;
 
-	if(pass)
-	{
-		dirblock_t newBlock;
-		newBlock.magic = DIR_MAGIC_NUM;
-		//Dafuq?
-		newBlock.num_entries = 0;
-		for (int i = 0; i < MAX_DIR_ENTRIES; i++)
-		{
-			newBlock.dir_entries[i].block_num = 0;
-			newBlock.dir_entries[i].name[0] = '\0';
-		}
-		bfs.write_block(block_num, (void*)&currentBlockPointer);
-	}
-	send(fs_sock, buffer, sizeof(buffer), 0);
-
+    bfs.write_block(curr_dir, (void*)&curr_block_ptr);
+  }
+  send(fs_sock, buffer, strlen(buffer), 0);
 }
 
 // switch to a directory
 void FileSys::cd(const char *name)
 {
-	bool pass = true;
-	bool found = false;
+  bool error = false;
+  bool found = false;
+  char buffer[256];
 
-	//Why 256?
-	char buffer[256];
+  buffer[0] = '\0';
+  //retrieve current directory data block
+  dirblock_t dir_ptr;
+  bfs.read_block(curr_dir, (void *) &dir_ptr);
 
-	dirblock_t directoryPointer;
-	bfs.read_block(curr_dir, (void *) &directoryPointer);
-
-	if(directoryPointer.num_entries > 0)
-	{
-		for(int i = 0; i <= directoryPointer.num_entries; i++)
-		{
-			if(strcmp(directoryPointer.dir_entries[i].name, name) == 0)
-			{
-				found = true;
-				if(!isValidDirectory(directoryPointer.dir_entries[i].block_num))
-				{
-					pass = false;
-					strcat(buffer, "500 File is not a direcotry\r\n");
-				}
-				else
-				{
-					strcat(buffer, "200 OK\r\n");
-					curr_dir = directoryPointer.dir_entries[i].block_num;
-				}
-			}
-		}
-	}
-
-	//If we reached and didnt find the directory
-	if(found && pass)
-		strcat(buffer, "503 Directory does not exist\r\n");
-
-	cout << buffer << endl;
-	send(fs_sock, buffer, sizeof(buffer), 0);
-	
+  printf("num entries %d\n", dir_ptr.num_entries);
+  //check if any sub directories exist in current directory
+  if(dir_ptr.num_entries > 0){
+    //check each sub directory and check directory names for match
+    for(int i= 0; i < dir_ptr.num_entries; i++){
+      if(strcmp(dir_ptr.dir_entries[i].name, name) == 0){
+        found = true;
+        if(!is_directory(dir_ptr.dir_entries[i].block_num)){
+          error = true;
+          strcat(buffer, "500 File is not a directory\r\nLength: 0\r\n\r\n");
+        }
+        else{
+          strcat(buffer, "200 OK\r\nLength: 0\r\n\r\n");
+          curr_dir = dir_ptr.dir_entries[i].block_num;
+        }
+      }
+    }
+  }
+  // if this point reached, no matching directory found
+  if(!found && !error){
+    strcat(buffer, "503 File does not exist\r\nLength: 0\r\n\r\n");
+  }
+  //cout << buffer << endl;
+  send(fs_sock, buffer, strlen(buffer), 0);
 }
 
 // switch to home directory
-void FileSys::home() 
-{
-	char buffer[BLOCK_COUNT];
-	curr_dir = 1;
-	strcpy(buffer, "200 OK\r\n Length: 0\r\n\r\n");
-	send(fs_sock, buffer, sizeof(buffer), 0);
-
+void FileSys::home(){
+  char buffer[1024];
+  curr_dir = 1;
+  strcpy(buffer, "200: OK\r\n Length: 0\r\n\r\n");
+  send(fs_sock, buffer, strlen(buffer), 0);
 }
 
 // remove a directory
 void FileSys::rmdir(const char *name)
 {
-	struct dirblock_t currentBlockPointer;
-	char currentFileName[FILENAME_MAX_SIZE];
-	char newFileName[FILENAME_MAX_SIZE];
+  struct dirblock_t curr_block_ptr;
+  char file_name[MAX_FNAME_SIZE + 1];
+  char curr_file_name[MAX_FNAME_SIZE + 1];
+  strcpy(file_name, name);
+  bfs.read_block(curr_dir, (void*)&curr_block_ptr);
 
-	strcpy(currentFileName, name);
-	bfs.read_block(curr_dir, (void*)&currentBlockPointer);
-
-	bool pass = true;
-	char buffer[1024];
-
-	short foundBlock = 0;
-	unsigned int foundIndex = 0;
-	bool found = false;
-	dirblock_t FoundDirectoryPointer;
-
-	for(unsigned int i = 0; i < MAX_DIR_ENTRIES; i++)
-	{
-		strcpy(currentFileName, currentBlockPointer.dir_entries[i].name);
-		if(strcmp(currentFileName, newFileName) == 0)
-		{
-			pass = true;
-			found = true;
-			foundIndex = i;
-			foundBlock = currentBlockPointer.dir_entries[foundIndex].block_num;
-			bfs.read_block(foundBlock, (void*)&FoundDirectoryPointer);
-		}
-		else
-			pass = false;
-	}
-
-	if(found)
-		pass = true;
-
-	if(!isValidDirectory(foundBlock))
-	{
-		if(pass)
-		{
-			pass = false;
-			strcpy(buffer, "500: File is not a directory\r\n");
-		}
-
-		else if(!found && pass)
-		{
-			pass = false;
-			strcpy(buffer, "503: File does not exist\r\n");
-		}
-
-		else if(FoundDirectoryPointer.num_entries != 0 && pass)
-		{
-			pass = false;
-			strcpy(buffer, "507: Directory is not empty\r\n");
-		}
-
-		else
-		{
-			if(found && !pass)
-			{
-				bfs.reclaim_block(currentBlockPointer.dir_entries[foundIndex].block_num);
-				currentBlockPointer.dir_entries[foundIndex].name[0] = '\0';
-				currentBlockPointer.dir_entries[foundIndex].block_num = 0;
-				currentBlockPointer.num_entries --;
-
-				bfs.write_block(curr_dir, (void*)&currentBlockPointer);
-				strcpy(buffer, "200 OK\r\n Length: 0\r\n\r\n");
-			}
-		}
-		send(fs_sock, buffer, sizeof(buffer), 0);
-	}
+  bool error = false;
+  char buffer[1024] = {0};
+  short found_block = 0;
+  unsigned int found_index = 0;
+  bool found = false;
+  dirblock_t found_dir_ptr;
+  //finds the directory to remove wthin the current directory, sets found
+  //bool to true if it exists in the directory
+  for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
+    strcpy(curr_file_name, curr_block_ptr.dir_entries[i].name);
+    if (strcmp(curr_file_name, file_name) == 0){
+      error = false;
+      found = true;
+      found_index = i;
+      found_block = curr_block_ptr.dir_entries[found_index].block_num;
+      bfs.read_block(found_block, (void*)&found_dir_ptr);
+    }else{
+      error = true;
+    }
+  }
+  if(found){
+    error = false;
+  }
+  //ensures the found directory is a directory and not a file
+  if(!is_directory(found_block)){
+    if(!error){
+      error = true;
+      strcpy(buffer, "500: File is not a directory\r\nLength: 0\r\n\r\n");
+    }
+  }
+  //if the found bool was not set to true then the filename passed in does
+  //not exist and the error message is wrote into the buffer
+  else if(!found && !error){
+    error = true;
+    strcpy(buffer ,"503: File does not exsit\r\nLength: 0\r\n\r\n");
+  }
+  //if the found directory is a directory but still contains files it cannot
+  //be removed and this error is wrote into the buffer
+  else if(found_dir_ptr.num_entries != 0 && !error){
+    error = true;
+    strcpy(buffer, "507: Directory is not empty\r\nLength: 0\r\n\r\n");
+  }
+  else{
+    //if error is still set to false then remove the directory and set all
+    //values back to null/0 as well as reclaiming its block num
+    if(found && !error){
+      bfs.reclaim_block(curr_block_ptr.dir_entries[found_index].block_num);
+      curr_block_ptr.dir_entries[found_index].name[0] = '\0';
+      curr_block_ptr.dir_entries[found_index].block_num = 0;
+      curr_block_ptr.num_entries--;
+      bfs.write_block(curr_dir, (void*)&curr_block_ptr);
+      strcpy(buffer, "200: OK\r\n Length: 0\r\n\r\n");
+    }
+  }
+  send(fs_sock, buffer, strlen(buffer), 0);
 }
 
 // list the contents of current directory
 void FileSys::ls()
 {
-	char bufferStart[] = "";
-	string buffer = "";
-	char msg[2048];
-	char msgLength[80];
-	dirblock_t currentBlockPointer;
-	char currentFileName[FILENAME_MAX_SIZE];
-
-	bfs.read_block(curr_dir, (void*)&currentBlockPointer);
-	for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++)
-	{
-		if(currentBlockPointer.dir_entries[i].block_num > 0)
-		{
-			if(isValidDirectory(currentBlockPointer.dir_entries[i].block_num))
-			{
-				string temp(currentBlockPointer.dir_entries[i].name);
-				buffer += (temp + "/ ");
-			}
-			else
-			{
-				string temp(currentBlockPointer.dir_entries[i].name);
-				buffer += (temp + " ");
-			}
-		}
-	}
-
-	strcpy(msg, bufferStart);
-	sprintf(msgLength, "Length: %d", sizeof(buffer.c_str()));
-	strcat(msg, msgLength);
-	strcat(msg, "\r\n\r\n");
-	strcat(msg, buffer.c_str());
-	send(fs_sock, 'LSSSSS', sizeof(msg), 0);
+  char bufferStart[] = "200: OK\r\n";
+  string buffer = "";
+  char msg[2048];
+  char msgLength[80];
+  dirblock_t curr_block_ptr;
+  char curr_file_name[MAX_FNAME_SIZE + 1];
+  //read the data held at the current directory from the disk
+  bfs.read_block(curr_dir, (void*)&curr_block_ptr);
+  for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
+    if(curr_block_ptr.dir_entries[i].block_num > 0){
+      if(is_directory(curr_block_ptr.dir_entries[i].block_num)){
+        string temp(curr_block_ptr.dir_entries[i].name);
+        buffer += temp;
+        buffer += "/ ";
+      }
+      else{
+        string temp2(curr_block_ptr.dir_entries[i].name);
+        buffer += temp2;
+        buffer += " ";
+      }
+    }
+  }
+  strcpy(msg, bufferStart);
+  sprintf(msgLength, "Length: %ld", strlen(buffer.c_str()));  // bugbug changed to strlen
+  strcat(msg, msgLength);
+  strcat(msg, "\r\n\r\n");
+  strcat(msg, buffer.c_str());
+  send(fs_sock, msg, strlen(msg), 0);
 }
 
 // create an empty data file
 void FileSys::create(const char *name)
 {
-	char buffer[1024];
-	bool pass = true;
+  char buffer[1024] = {0};
+  bool error = false;
 
-	dirblock_t currentBlockPointer;
-	char newFileName[FILENAME_MAX_SIZE + 1];
-	char currentFileName[FILENAME_MAX_SIZE + 1];
-	strcpy(newFileName, name);
+  dirblock_t curr_block_ptr;
+  char file_name[MAX_FNAME_SIZE + 1];
+  char curr_file_name[MAX_FNAME_SIZE + 1];
+  strcpy(file_name, name);
 
-	bfs.read_block(curr_dir, (void*)&currentBlockPointer);
-	if(pass)
-	{
-		for(unsigned int i = 0; i < MAX_DIR_ENTRIES; i++)
-		{
-			strcpy(currentFileName, currentBlockPointer.dir_entries[i].name);
-			if(strcmp(currentFileName, newFileName) == 0)
-			{
-				strcpy(buffer, "502: File exits\r\n");
-				pass = false;
-			}
-		}
-	}
+  bfs.read_block(curr_dir, (void*)&curr_block_ptr);
+  if(!error){
+    for(unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
+      strcpy(curr_file_name, curr_block_ptr.dir_entries[i].name);
+      if(strcmp(curr_file_name, file_name) == 0){
+        strcpy(buffer, "502: File exists\r\nLength: 0\r\n\r\n"); 
+        error = true;
+      }
+    }
+  }
 
-	if(pass)
-	{
-		if(strlen(name) > FILENAME_MAX_SIZE + 1)
-		{
-			strcpy(buffer, "504: File name is too large\r\n");
-			pass = false;
-		}
-	}
+  if(!error){
+    if(strlen(name) > MAX_FNAME_SIZE + 1){
+      strcpy(buffer, "504: File name is too long\r\nLength: 0\r\n\r\n");
+      error = true;
+    }
+  }
 
-	//Create new free block
-	short block_num = bfs.get_free_block();
-	if(block_num == 0)
-	{
-		block_num = bfs.get_free_block();
-		if(block_num == 0)
-		{
-			if(pass)
-			{
-				strcpy(buffer, "505: Disk is full\r\n");
-				pass = false;
-			}
-		}
-	}
+  // make new free block
+  short block_num = bfs.get_free_block();
+  if(block_num == 0){
+    block_num = bfs.get_free_block();
+    if(block_num == 0){
+      if(!error){
+        strcpy(buffer, "505: Disk is full\r\nLength: 0\r\n\r\n");
+        error = true;
+      }
+    }
+  }
+  if(!error){
+    if(curr_block_ptr.num_entries == MAX_DIR_ENTRIES){
+      strcpy(buffer, "506: Directory is full\r\nLength: 0\r\n\r\n");
+      error = true;
+    }
+  }
 
-	if(pass)
-	{
-		if(currentBlockPointer.num_entries >= MAX_DIR_ENTRIES)
-		{
-			strcpy(buffer, "506: Directory is full\r\n");
-		}
-	}
-
-	if(pass)
-	{
-		inode_t currentDirectoryInode;
-		currentDirectoryInode.magic = INODE_MAGIC_NUM;
-		currentDirectoryInode.size = 0;
-		for(int k = 0; k < MAX_DIR_ENTRIES; k++)
-		{
-			currentDirectoryInode.blocks[k] = 0;
-		}
-		bfs.write_block(block_num, (void*) &currentDirectoryInode);
-		strcpy(buffer, "200 OK\r\n Length: 0\r\n");
-		strcat(buffer, newFileName);
-		strcpy(currentBlockPointer.dir_entries[currentBlockPointer.num_entries].name, newFileName);
-
-		currentBlockPointer.dir_entries[currentBlockPointer.num_entries].block_num = block_num;
-
-		bfs.write_block(curr_dir, (void *)&currentBlockPointer);
-
-	}
-	send(fs_sock, buffer, sizeof(buffer), 0);
+  // fill new inode block_num to hold 0 to show blocks are unused
+  if(!error){
+    inode_t curr_dir_inode;
+    curr_dir_inode.magic = INODE_MAGIC_NUM;
+    curr_dir_inode.size = 0;
+    for(int k = 0; k < MAX_DIR_ENTRIES; k++){
+      curr_dir_inode.blocks[k] = 0;
+    }
+    bfs.write_block(block_num, (void*) &curr_dir_inode);
+    strcpy(buffer, "200: OK\r\nLength: 0\r\n\r\n");
+    strcat(buffer,file_name);
+    strcpy(curr_block_ptr.dir_entries[curr_block_ptr.num_entries].name,
+           file_name);
+    curr_block_ptr.dir_entries[curr_block_ptr.num_entries].block_num =
+      block_num;
+    curr_block_ptr.num_entries++; // add this file to parent directory
+    bfs.write_block(curr_dir, (void*)&curr_block_ptr);
+  }
+  send(fs_sock, buffer, strlen(buffer), 0);
 }
 
 // append data to a data file
@@ -361,374 +320,217 @@ void FileSys::append(const char *name, const char *data)
 {
 }
 
-// display the contents of a data file
-void FileSys::cat(const char *name)
-{
-	bool found = false;
-	bool pass = true;
-
-	//why 256?
-	char buffer[FILENAME_MAX_SIZE + 256];
-
-	datablock_t* fileContents = new datablock_t;
-	dirblock_t dirBlock;
-	bfs.read_block(curr_dir, (void *) &dirBlock);
-	for(int i = 0; i < MAX_DIR_ENTRIES; i++)
-	{
-		if(strcmp(name, dirBlock.dir_entries[i].name) == 0)
-		{
-			found = true;
-			if(isValidDirectory(dirBlock.dir_entries[i].block_num))
-			{
-				strcpy(buffer, "501: File is a directory\r\n");
-				pass = false;
-				delete fileContents;
-				break;
-			}
-			else if(!isValidDirectory(dirBlock.dir_entries[i].block_num))
-			{
-				inode_t fileInode;
-				bfs.read_block(dirBlock.dir_entries[i].block_num, (void *) &fileInode);
-
-				std::string fileSizeStr = "FILESIZEAHHHH";//std::to_string(fileInode.size);
-				//std::string fileSizeStr = string(itoa(fileInode.size));
-				int byte_count = (fileSizeStr.length() + 1);
-				char * fileSize = new char[byte_count];
-				strcpy(fileSize, fileSizeStr.c_str());
-
-				strcat(buffer, "200 OK\r\n Length:");
-				strcat(buffer, fileSize);
-				strcat(buffer, "\r\n");
-				//Why a second time
-				strcat(buffer, "\r\n");
-
-				delete[] fileSize;
-
-				for(int j = 0; j < sizeof(fileInode.blocks); j++)
-				{
-					bfs.read_block(fileInode.blocks[j], (void *) &fileContents);
-					strcat(buffer, fileContents->data);
-				}
-
-				delete fileContents;
-				//Send buffer to socket here **************************************************************************** ??
-			}
-		}
-	}
-
-	if(!found && pass)
-	{
-		strcpy(buffer, "503: File does not exist\r\n");
-	}
-
-	delete fileContents;
-	send(fs_sock, buffer, sizeof(buffer), 0);
-}
-
-// display the first N bytes of the file
-void FileSys::head(const char *name, unsigned int n)
-{
-	bool found = false;
-	bool pass = true;
-
-	//Why + 256?
-	char buffer [FILENAME_MAX_SIZE + 256];
-
-	datablock_t* fileContents = new datablock_t;
-	dirblock_t dirBlock;
-
-	bfs.read_block(curr_dir, (void *) &dirBlock);
-
-	for(int i = 0; i < MAX_DIR_ENTRIES; i++)
-	{
-		if(strcmp(name, dirBlock.dir_entries[i].name) == 0)
-		{
-			found = true;
-			if(isValidDirectory(dirBlock.dir_entries[i].block_num))
-			{
-				strcpy(buffer, "501: File is a directory\r\n");
-				pass = false;
-				delete fileContents;
-			}
-		}
-
-		else if (!isValidDirectory(dirBlock.dir_entries[i].block_num))
-		{
-			inode_t fileInode;
-			unsigned int bytesLeft;
-
-			bfs.read_block(dirBlock.dir_entries[i].block_num, (void *) &fileInode);
-
-			//Doubble equal?
-			if(n > fileInode.size)
-				bytesLeft = fileInode.size;
-
-			string sizeStr = "fileInode.size";//to_string(fileInode.size);
-			int byteCount = (sizeStr.length() + 1);
-			char* fileSize = new char[16];
-			strcpy(fileSize, sizeStr.c_str());
-
-			strcat(buffer, "200 OK\r\n Length:");
-			strcat(buffer, fileSize);
-			strcat(buffer, "\r\n");
-			strcat(buffer, "\r\n");
-
-			delete[] fileSize;
-
-			for(int j = 0; j < sizeof(fileInode.blocks);j++)
-			{
-				bfs.read_block(fileInode.blocks[j], (void *) &fileContents);
-				if(bytesLeft < BLOCK_SIZE)
-					strncat(buffer, fileContents->data, bytesLeft);
-				else
-				{
-					strcat(buffer, fileContents->data);
-					bytesLeft -= BLOCK_SIZE;
-				}
-			}
-		}
-	}
-
-	if(!found && pass)
-		strcpy(buffer, "503: File does not exist\r\n");
-
-	delete fileContents;
-	send(fs_sock, buffer, sizeof(buffer), 0);
-	
-}
-
 // delete a data file
 void FileSys::rm(const char *name)
 {
-	char buffer[FILENAME_MAX_SIZE + 256];
-	dirblock_t currBlock;
-	bool pass = true;
-	bool found = false;
+  char buffer[MAX_FNAME_SIZE+256];
+  dirblock_t curr_block;
+  bool error = false;
+  bool found = false;
+  bfs.read_block(curr_dir,(void*)& curr_block);
 
-	bfs.read_block(curr_dir,(void*)& currBlock);
+  for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
+    if (strcmp(curr_block.dir_entries[i].name, name) == 0){
+      if (!is_directory(curr_block.dir_entries[i].block_num)){
+        found = true;
+        inode_t inode_block;
+        bfs.read_block(curr_block.dir_entries[i].block_num,
+                       (void*)&inode_block);
+        for (size_t j = 0; j < (inode_block.size / BLOCK_SIZE) + 1; j++){
+          bfs.reclaim_block(inode_block.blocks[i]);
+          inode_block.blocks[i] = 0;
+          inode_block.size = 0;
+        }
+        bfs.reclaim_block(curr_block.dir_entries[i].block_num);
 
-	for(unsigned int i = 0; i < MAX_DIR_ENTRIES; i++)
-	{
-		if(strcmp(currBlock.dir_entries[i].name, name) == 0)
-		{
-			if(!isValidDirectory(currBlock.dir_entries[i].block_num))
-			{
-				found = true;
-				inode_t inodeBlock;
-				bfs.read_block(currBlock.dir_entries[i].block_num, (void*)&inodeBlock);
+        curr_block.dir_entries[i].name[0] = '\0';
+        curr_block.dir_entries[i].block_num = 0;
 
-				for(size_t j = 0; j < (inodeBlock.size / BLOCK_SIZE) + 1; j++)
-				{
-					bfs.reclaim_block(inodeBlock.blocks[i]);
-					inodeBlock.blocks[i] = 0;
-					inodeBlock.size = 0;
-				}
-				bfs.reclaim_block(currBlock.dir_entries[i].block_num);
-
-				currBlock.dir_entries[i].name[0] = '\0';
-				currBlock.dir_entries[i].block_num = 0;
-
-				currBlock.num_entries--;
-				bfs.write_block(curr_dir,(void*)&currBlock);
-			}
-			else
-			{
-				strcpy(buffer, "501: File is a directory\r\n");
-				pass = false;
-			}
-		}
-	}
-
-	if(!found && pass)
-	{
-		strcpy(buffer, "503: File does not exist\r\n");
-		pass = false;
-	}
-	else
-	{
-		strcpy(buffer, "200: OK\r\n Length: 0\r\n\r\n");
-	}
-
-	send(fs_sock, buffer, sizeof(buffer), 0);
+        curr_block.num_entries--;
+        bfs.write_block(curr_dir,(void*)& curr_block);
+      }
+      else{
+        strcpy(buffer, "501: File is a directory\r\nLength: 0\r\n\r\n");
+        error = true;
+      }
+    }
+  }
+  if(!found && !error){
+    strcpy(buffer, "503: File does not exist\r\nLength: 0\r\n\r\n");
+    error = true;
+  }else{
+    strcpy(buffer, "200: OK\r\nLength: 0\r\n\r\n");
+  }
+  //send buffer to client
+  send(fs_sock, buffer, strlen(buffer), 0);
 }
+
 // display stats about file or directory
 void FileSys::stat(const char *name)
 {
-	dirblock_t currentBlockPointer;
-	bfs.read_block(curr_dir, (void *)&currentBlockPointer);
-	bool found = false;
-	int foundIndex;
+  dirblock_t curr_block_ptr;
+  bfs.read_block(curr_dir, (void*)&curr_block_ptr);
+  bool found = false;
+  int found_index;
 
-	char newFileName[FILENAME_MAX_SIZE + 1];
-	char currentFileName[FILENAME_MAX_SIZE + 1];
-	strcpy(newFileName, name);
+  char file_name[MAX_FNAME_SIZE+1];
+  char curr_file_name[MAX_FNAME_SIZE+1];
+  strcpy(file_name, name);
 
-	dirblock_t FoundDirectoryPointer;
-	bool dirCheck;
-	char bufferStart[] = "200: OK\r\n";
-	char msgLength[80];
-	char message[2048];
-	char buffer[2048];
+  dirblock_t found_dir_ptr;
+  bool dir_check;
+  char bufferStart[] = "200: OK\r\n";
+  char msgLength[80];
+  char message[2048];
+  char buffer[2048];
 
-	bool checkFirstBlock = false;
-	int count = 0;
-	short firstBlock;
-	char directoryBlock[BLOCK_COUNT];
-	char inodeBlock[BLOCK_COUNT];
-	char bytesInFile[BLOCK_COUNT];
-	char numberOfBlocks[BLOCK_COUNT];
-	char firstBlockNum[BLOCK_COUNT];
+  //arrays to hold inode stats and holders for inode values
+  bool check_first_block = false;
+  int counter = 0;
+  short first_block;
+  char directory_block[MAX_DATA_BLOCKS];
+  char inode_block[MAX_DATA_BLOCKS];
+  char bytes_in_file[MAX_FILE_SIZE];
+  char number_of_blocks[MAX_DATA_BLOCKS];
+  char first_block_num[MAX_DATA_BLOCKS];
 
-	for(unsigned int i = 0; i < MAX_DIR_ENTRIES; i++)
-	{
-		strcpy(currentFileName, currentBlockPointer.dir_entries[i].name);
-		if(strcpy(currentFileName, newFileName) == 0)
-		{
-			found = true;
-			foundIndex = i;
-			bfs.read_block(currentBlockPointer.dir_entries[i].block_num, (void*)&FoundDirectoryPointer);
-		}
-	}
+  memset(buffer, 0, sizeof(buffer));  // bugbug zero this out
 
-	if(found)
-	{
-		if(isValidDirectory(currentBlockPointer.dir_entries[foundIndex].block_num))
-		{
-			strcat(buffer, "\nDirectory name: ");
-			strcat(buffer, newFileName);
-			strcat(buffer, "\nDirectory block: ");
-			sprintf(directoryBlock, "%d", currentBlockPointer.dir_entries[foundIndex].block_num);
-			strcat(buffer, directoryBlock);
-		}
-		else
-		{
-			inode_t newInode;
-			bfs.read_block(currentBlockPointer.dir_entries[foundIndex].block_num, (void*) &newInode);
+  for(unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
+    strcpy(curr_file_name, curr_block_ptr.dir_entries[i].name);
+    if(strcmp(curr_file_name, file_name) == 0){
+      found = true;
+      found_index = i;
+      bfs.read_block(curr_block_ptr.dir_entries[i].block_num,
+                     (void*)&found_dir_ptr);
+    }
+  }
 
-			for(int k = 0; k < BLOCK_COUNT; k++)
-			{
-				if(newInode.blocks[k] != 0) 
-				{
-					count++;
-
-					if(!checkFirstBlock)
-					{
-						firstBlock = k;
-						checkFirstBlock = true;
-					}
-				}
-			}
-
-			strcat(buffer, "\nInode block: ");
-      		sprintf(inodeBlock, "%d", currentBlockPointer.dir_entries[foundIndex].block_num);
-      		strcat(buffer, inodeBlock);
-      		strcat(buffer, "\nBytes in file: ");
-      		sprintf(bytesInFile, "%d", newInode.size);
-      		strcat(buffer, bytesInFile);
-      		strcat(buffer, "\nNumber of blocks: ");
-      		sprintf(numberOfBlocks, "%d", count);
-      		strcat(buffer, numberOfBlocks);
-      		strcat(buffer, "\nFirst block: ");
-      		sprintf(firstBlockNum, "%d", firstBlock);
-      		strcat(buffer, firstBlockNum);
-		}
-  		
-  		strcpy(message, bufferStart);
-    	sprintf(msgLength, "Length: %d \r\n", sizeof(buffer));
-    	strcat(message, msgLength);
-    	//strcat(message, buffer);
-    	strcat(buffer, message);
-  	
-	}
-	else
-		strcpy(message, "503 File does not exist\r\n");
-	
-	send(fs_sock, buffer, sizeof(buffer), 0);
-}
-
-// HELPER FUNCTIONS (optional)
-const bool FileSys::isValidDirectory(short block_num)
-{
-	dirblock_t target_dir;
-	bfs.read_block(block_num, (void *) &target_dir);
-
-	if(target_dir.magic == DIR_MAGIC_NUM)
-		return true;
-
-	return false;
+  if(found){
+    if(is_directory(curr_block_ptr.dir_entries[found_index].block_num)){
+      strcat(buffer, "\nDirectory name: ");
+      strcat(buffer, file_name);
+      strcat(buffer, "\nDirectory block: ");
+      sprintf(directory_block, "%d",
+              curr_block_ptr.dir_entries[found_index].block_num);
+      strcat(buffer, directory_block);
+    }
+    else{
+      inode_t new_inode;
+      bfs.read_block(curr_block_ptr.dir_entries[found_index].block_num,
+                     (void*)&new_inode);
+      for(int k = 0; k < MAX_DATA_BLOCKS; k++){
+        if(new_inode.blocks[k] != 0){
+          counter = counter + 1;
+          // determine first block
+          if(!check_first_block){
+            first_block = k;
+            check_first_block = true;
+          }
+        }
+      }
+      strcat(buffer, "\nInode block: ");
+      sprintf(inode_block, "%d",
+              curr_block_ptr.dir_entries[found_index].block_num);
+      strcat(buffer, inode_block);
+      strcat(buffer, "\nBytes in file: ");
+      sprintf(bytes_in_file, "%d", new_inode.size);
+      strcat(buffer, bytes_in_file);
+      strcat(buffer, "\nNumber of blocks: ");
+      sprintf(number_of_blocks, "%d", counter);
+      strcat(buffer, number_of_blocks);
+      strcat(buffer, "\nFirst block: ");
+      sprintf(first_block_num, "%d", first_block);
+      strcat(buffer, first_block_num);
+    }
+    strcpy(message, bufferStart);
+    sprintf(msgLength, "Length: %ld \r\n\r\n", strlen(buffer)); // bugbug changed to strlen
+    strcat(message, msgLength);
+    //strcat(message, buffer);
+    strcat(message, buffer); // bugbug swap these  
+    }
+  else{
+    strcpy(message, "503: File does not exist\r\nLength: 0\r\n\r\n");
+  }
+  send(fs_sock, message, strlen(message), 0);  // bugbug send this
 }
 
 // Executes the command. Returns true for quit and false otherwise.
 bool FileSys::execute_command(string command_str)
 {
-  // parse the command line
-  struct FileSys::Command command = parse_command(command_str);
+	// parse the command line
+  	struct FileSys::Command command = parse_command(command_str);
 
-  // copy the contents of the string to char array
-  const char* command_name = command.name.c_str();
-  const char* file_name = command.file_name.c_str();
-  const char* append_data = command.append_data.c_str();
+ 	// copy the contents of the string to char array
+  	const char* command_name = command.name.c_str();
+  	const char* file_name = command.file_name.c_str();
+  	const char* append_data = command.append_data.c_str();
 
-  // look for the matching command
-  if (command.name == "") {
-    return false;
-  }
-  else if (command.name == "mkdir") {
-    mkdir(file_name);
-  }
-  else if (command.name == "cd") {
-    cd(file_name);
-  }
-  else if (command.name == "home") {
-    home();
-  }
-  else if (command.name == "rmdir") {
-    rmdir(file_name);
-  }
-  else if (command.name == "ls") {
-    ls();
-  }
-  else if (command.name == "create") {
-    create(file_name);
-  }
-  else if (command.name == "append") {
-    append(file_name, append_data);
-  }
-  else if (command.name == "cat") {
-    cat(file_name);
-  }
-  else if (command.name == "head") {
-    errno = 0;
-    unsigned long n = strtoul(command.append_data.c_str(), NULL, 0);
-    if (0 == errno) {
-      head(file_name, n);
-    } else {
-      cerr << "Invalid command line: " << command.append_data;
-      cerr << " is not a valid number of bytes" << endl;
-      return false;
-    }
-  }
-  else if (command.name == "rm") {
-    rm(file_name);
-  }
-  else if (command.name == "stat") {
-    stat(file_name);
-  }
-  else if (command.name == "quit") {
-    return true;
-  }
+  	printf("parsed command to '%s'\n", command_name);
 
-  return false;
+  	// look for the matching command
+  	if (command.name == "") 
+    	return false;
+  
+  	else if (command.name == "mkdir") 
+   		mkdir(file_name);
+	  
+  	else if (command.name == "cd") 
+	    cd(file_name);
+	  
+	else if (command.name == "home") 
+	    home();
+	  
+	else if (command.name == "rmdir") 
+	    rmdir(file_name);
+	  
+	else if (command.name == "ls") 
+	    ls();
+	  
+	else if (command.name == "create") 
+	    create(file_name);
+	  
+	else if (command.name == "append") 
+	    append(file_name, append_data);
+	  
+	else if (command.name == "cat") 
+    	cat(file_name);
+  
+	else if (command.name == "head") 
+	{
+		errno = 0;
+	    unsigned long n = strtoul(command.append_data.c_str(), NULL, 0);
+	    if (0 == errno) 
+	    	head(file_name, n);
+
+	    else {
+	      	cerr << "Invalid command line: " << command.append_data;
+	      	cerr << " is not a valid number of bytes" << endl;
+	      	return false;
+	    }
+	  }
+
+	else if (command.name == "rm")
+	    rm(file_name);
+	  
+	else if (command.name == "stat")
+	    stat(file_name);
+	  
+	else if (command.name == "quit")
+		return true;
+	  
+	return false;
 }
 
 // Parses a command line into a command struct. Returned name is blank
 // for invalid command lines.
 FileSys::Command FileSys::parse_command(string command_str)
 {
-  //cout << "Running command: " << command_str << endl;
+  cout << "Running command: " << command_str << endl;
 
   // empty command struct returned for errors
   struct FileSys::Command empty = {"", "", ""};
+
 
   // grab each of the tokens (if they exist)
   struct Command command;
@@ -792,4 +594,175 @@ FileSys::Command FileSys::parse_command(string command_str)
   }
 
   return command;
+}
+
+// display the contents of a data file
+void FileSys::cat(const char *name)
+{
+  bool error = false;
+  bool found = false;
+
+  // may need to increase buffer size to account for terminal messages
+  char buffer [MAX_FILE_SIZE + 256];
+
+  datablock_t* file_contents = new datablock_t;
+  dirblock_t dir_block;
+  bfs.read_block(curr_dir, (void *) &dir_block);
+  for(int i = 0; i < MAX_DIR_ENTRIES; i++)
+    {
+      //target file found in current element in dir_entries
+      if(strcmp(name, dir_block.dir_entries[i].name)==0)
+        {
+          found = true;
+          if(is_directory(dir_block.dir_entries[i].block_num))
+            {
+              strcpy(buffer, "501: File is a directory\r\nLength: 0\r\n\r\n");
+              error = true;
+              break;
+            }
+          else if(!is_directory(dir_block.dir_entries[i].block_num))
+            {
+              inode_t file_inode;
+              bfs.read_block(dir_block.dir_entries[i].block_num, (void *) &file_inode);
+
+              int fileLength = file_inode.size;
+              string file_size_str = to_string(file_inode.size);
+              int byte_count = (file_size_str.length() + 1);
+              char* file_size = new char[byte_count];
+              strcpy(file_size, file_size_str.c_str());
+
+              strcat(buffer, "200 OK\r\n Length:");
+              strcat(buffer, file_size);
+              strcat(buffer, "\r\n");
+              strcat(buffer, "\r\n");
+              delete[] file_size;
+
+              int bytes_left = fileLength;
+              for(int j = 0; j < ARRAY_LENGTH(file_inode.blocks) && bytes_left; j++)
+                {
+                  bfs.read_block(file_inode.blocks[j], (void *) &file_contents);
+                  if(bytes_left < BLOCK_SIZE)
+                  {
+                    strncat(buffer, file_contents->data, bytes_left);
+                    bytes_left = 0;
+                  }
+                  else
+                  {
+                    strncat(buffer, file_contents->data, BLOCK_SIZE);
+                    bytes_left -= BLOCK_SIZE;
+                  }
+                }
+
+              break;
+              // send buffer to socket here
+            }
+        }
+    }
+
+    // if point reached, file not found.
+    // ERROR 503 File does not exist
+    if(!found && !error)
+    {
+      strcpy(buffer, "503: File does not exist\r\nLength: 0\r\n\r\n");
+    }
+
+  if (file_contents != NULL)
+    delete file_contents;
+  send(fs_sock, buffer, strlen(buffer), 0);
+}
+
+// display the first N bytes of the file
+void FileSys::head(const char *name, unsigned int n)
+{
+  bool found = false;
+  bool error = false;
+  char buffer [MAX_FILE_SIZE + 256];
+
+  datablock_t* file_contents = new datablock_t;
+  dirblock_t dir_block;
+
+  // read contents of current directory's directory node into dir_ptr
+  bfs.read_block(curr_dir, (void *) &dir_block);
+
+  // look through all elements of dir_entries held in current directory blocks
+  for(int i = 0; i < MAX_DIR_ENTRIES; i++)
+    {
+      //target file found in current element in dir_entries
+      if(strcmp(name,dir_block.dir_entries[i].name)==0)
+        {
+          found = true;
+          if(is_directory(dir_block.dir_entries[i].block_num))
+            {
+              strcpy(buffer, "501: File is a directory\r\nLength: 0\r\n\r\n");
+              error = true;
+              break;
+            }
+          else if(!is_directory(dir_block.dir_entries[i].block_num))
+            {
+              inode_t file_inode;
+              unsigned int bytes_left;
+              //read inode data for targeted file
+              bfs.read_block(dir_block.dir_entries[i].block_num, (void *) &file_inode);
+
+              bytes_left = file_inode.size; // bugbug initialize this
+              if(n > file_inode.size)
+              {
+                bytes_left = file_inode.size;
+              }
+
+              string size_str = to_string(file_inode.size);
+              int byte_count = (size_str.length() + 1);
+              char* file_size = new char[16];
+              strcpy(file_size, size_str.c_str());
+
+              strcat(buffer, "200 OK\r\n Length:");
+              strcat(buffer, file_size);
+              strcat(buffer, "\r\n");
+              strcat(buffer, "\r\n");
+              delete[] file_size;
+
+              //append each data block pointed to by inode_t.blocks[] to our buffer
+              for(int j = 0; j < ARRAY_LENGTH(file_inode.blocks) && bytes_left; j++)
+                {
+                  bfs.read_block(file_inode.blocks[j], (void *) &file_contents);
+                  if(bytes_left < BLOCK_SIZE)
+                  {
+                    strncat(buffer, file_contents->data, bytes_left);
+                    bytes_left = 0;
+                  }
+                  else
+                  {
+                    strncat(buffer, file_contents->data, BLOCK_SIZE);
+                    bytes_left -= BLOCK_SIZE;
+                  }
+                }
+
+                break;
+            }
+        }
+    }
+  // if point reached, file not found.
+  // ERROR 503 File does not exist
+  if(!found && !error)
+  {
+    strcpy(buffer, "503: File does not exist\r\nLength: 0\r\n\r\n");
+  }
+  if (file_contents != NULL)
+    delete file_contents;
+  send(fs_sock, buffer, strlen(buffer), 0);
+}
+
+// HELPER FUNCTIONS
+const bool FileSys::is_directory(short block_num)
+{
+  //create dirblock_t to read block into
+  dirblock_t target_dir;
+  bfs.read_block(block_num, (void *) &target_dir);
+
+  if (target_dir.magic == DIR_MAGIC_NUM) {
+    return true;
+  }
+  else {
+    return false;
+  }
 }

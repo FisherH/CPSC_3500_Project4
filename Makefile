@@ -1,7 +1,7 @@
 CXX := g++ 
 CXXFLAGS := -g -O0 -std=c++11
 
-SRC	:= BasicFileSys.cpp Disk.cpp FileSys.cpp  server.cpp Shell.cpp
+SRC	:= BasicFileSys.cpp Disk.cpp FileSys.cpp  server.cpp Shell.cpp SocketHelper.cpp
 HDR	:= BasicFileSys.h  Blocks.h  Disk.h  FileSys.h  Shell.h
 OBJ	:= $(patsubst %.cpp, %.o, $(SRC))
 
@@ -10,8 +10,8 @@ all: nfsserver nfsclient
 nfsserver: $(OBJ)
 	$(CXX) -o $@ $(OBJ)
 	rm -f DISK
-nfsclient: Shell.o client.o
-	$(CXX) -o $@ Shell.o client.o
+nfsclient: Shell.o client.o SocketHelper.o
+	$(CXX) -o $@ Shell.o client.o SocketHelper.o
 %.o:	%.cpp $(HDR)
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 

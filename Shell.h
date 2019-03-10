@@ -10,6 +10,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+#include "SocketHelper.h"
+
 // Shell
 class Shell {
 
@@ -86,6 +88,11 @@ class Shell {
     void stat_rpc(string fname);
 
     void print_response(string command, string response);
+
+    void receive_response(string command);
+
+    SocketHelper socketHelper;
 };
 
 #endif
+  

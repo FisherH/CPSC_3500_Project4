@@ -19,7 +19,7 @@ void BasicFileSys::mount()
 
   // initialize the superblock
   struct superblock_t super_block;
-  super_block.bitmap[0] = 0x3;    // mark blocks 0 and 1 as used
+  super_block.bitmap[0] = 0x3;		// mark blocks 0 and 1 as used
   for (int i = 1; i < BLOCK_SIZE; i++) {
     super_block.bitmap[i] = 0;
   }
@@ -66,14 +66,14 @@ short BasicFileSys::get_free_block()
       // loop to check each bit
       for (int bit = 0; bit < 8; bit++) {
         int mask = 1 << bit;
-  if (mask & ~super_block.bitmap[byte]) {
+	if (mask & ~super_block.bitmap[byte]) {
 
           // Available block is found: set bit in bitmap, write result back
-    // to superblock, and return block number.
-    super_block.bitmap[byte] |= mask;
-    disk.write_block(0, (void *) &super_block);
-    return (byte * 8) + bit;
-  }
+	  // to superblock, and return block number.
+	  super_block.bitmap[byte] |= mask;
+	  disk.write_block(0, (void *) &super_block);
+	  return (byte * 8) + bit;
+	}
       }
     }
   }
@@ -90,9 +90,9 @@ void BasicFileSys::reclaim_block(short block_num)
   disk.read_block(0, (void *) &super_block);
 
   // clear bit
-  int byte = block_num / 8;   // byte number
-  int bit = block_num % 8;    // bit number
-  unsigned char mask = ~(1 << bit); // mask to clear bit
+  int byte = block_num / 8;		// byte number
+  int bit = block_num % 8;		// bit number
+  unsigned char mask = ~(1 << bit);	// mask to clear bit
   super_block.bitmap[byte] &= mask;
 
   // write back superblock

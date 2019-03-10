@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include <stdio.h>
 
+#include "SocketHelper.h"
+
 using namespace std;
 
 //constant variables
@@ -57,14 +59,14 @@ int main(int argc, char* argv[]) {
   bzero((char*) &server_ad, sizeof(server_ad));
   server_ad.sin_family=AF_INET;
   server_ad.sin_addr.s_addr = INADDR_ANY;
-  server_ad.sin_port= htons(8080/*31337/*port*/);
+  server_ad.sin_port= htons(port);
   memset(server_ad.sin_zero, '\0', sizeof server_ad.sin_zero);
   
   
   //  if( bind(sockfd,(struct sockaddr *) &server_ad, siezof(struct server_ad))==-1)
   // error((char*)"ERROR on bind");
 
-  int bindCheck= bind(sockfd,(struct sockaddr *) &server_ad, sizeof(struct sockaddr));
+  int bindCheck= ::bind(sockfd,(struct sockaddr *) &server_ad, sizeof(struct sockaddr));
   if(bindCheck == -1)
     {
       cout<<"could not bind socket.\n";
@@ -81,9 +83,11 @@ int main(int argc, char* argv[]) {
       error((char*)"ERROR on accept");
 
 
+  printf("we have a client connection\n");
+
   //mount the file system
   FileSys fs;
-  fs.mount(sockfd); //assume that sock is the new socket created
+  fs.mount(newsockfd); //assume that sock is the new socket created
   //for a TCP connection between the client and the server.
 
 
@@ -91,10 +95,19 @@ int main(int argc, char* argv[]) {
   //system operation which returns the results or error messages back to the clinet
   //until the client closes the TCP connection.
 
+  // use helper class to read lf terminated lines from the client
+  SocketHelper socketHelper;
+  socketHelper.read_socket = newsockfd;
+
   int n;
   while(1) {
     bzero(buffer, BUFFER_SIZE);
-    n= recv(newsockfd, buffer, sizeof(buffer), 0 );
+
+    socketHelper.Reset();
+    n=socketHelper.ReadLine(buffer, sizeof(buffer));
+    //n= recv(newsockfd, buffer, sizeof(buffer), 0 );
+
+    //printf("received '%d' bytes command='%s'\n", n, buffer);
 
     fs.execute_command(buffer);
 
