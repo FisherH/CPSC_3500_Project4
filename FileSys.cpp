@@ -41,8 +41,7 @@ void FileSys::mkdir(const char *name)
 
   	if(pass && (strlen(name) > MAX_FNAME_SIZE +1))
   	{
-    	//504
-    	strcpy(buffer, "200: Filename too long\r\nLength: 0\r\n\r\n");
+    	strcpy(buffer, "504: Filename too long\r\nLength: 0\r\n\r\n");
     	pass = false;
   	}
 
@@ -52,8 +51,8 @@ void FileSys::mkdir(const char *name)
 	  	for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++) {
 	    	strcpy(curr_file_name, curr_block_ptr.dir_entries[i].name);
 	    	if (strcmp(curr_file_name, file_name) == 0){
-	        //502
-	      	strcpy(buffer, "200: Directory exists\r\nLength: 0\r\n\r\n");
+
+	      	strcpy(buffer, "502: Directory exists\r\nLength: 0\r\n\r\n");
 	        cout << "Operation failed: Directory exists." << endl;
 	      	pass = false;
 	        break;
@@ -67,7 +66,7 @@ void FileSys::mkdir(const char *name)
     	if (block_num == 0){
       		if(pass){
         		//505
-        		strcpy(buffer, "202: Disk is full\r\nLength: 0\r\n\r\n");
+        		strcpy(buffer, "505: Disk is full\r\nLength: 0\r\n\r\n");
         		cout << "Operation failed: Disk is full." << endl;
         		pass = false;
       		}
@@ -252,8 +251,8 @@ void FileSys::ls()
   	for (unsigned int i = 0; i < MAX_DIR_ENTRIES; i++){
   		if(curr_block_ptr.dir_entries[i].block_num > 0){
       		//For directories
+      		dirCount++;
      		if(is_directory(curr_block_ptr.dir_entries[i].block_num)){
-        		dirCount++;
         		string temp(curr_block_ptr.dir_entries[i].name);
         		buffer += temp;
         		buffer += "/ ";
