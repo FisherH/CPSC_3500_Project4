@@ -1,0 +1,127 @@
+//// Each team member's name and contributions ////////////
+
+Team member #1:Michelle Simoni
+Contributions:
+-created the helper function that was called to call functions in shell.cpp
+	-remote_process
+- other functions in shell.cpp
+	mountNFS
+	unMount
+-functions in FileSys.cpp
+	append
+	cat
+	create
+-collaborated on server.cpp
+
+
+Team member #2: Fisher Harris
+Contributions:
+-functions in shell.cpp
+	shutdown
+	
+-functions in fileSys.cpp
+	mount
+	unmount
+	mkdir
+	cd
+	home
+	rmdir
+	rm
+-collaborated on server.cpp
+	
+
+
+Team member #3: Jack Arnold
+-created socket helper class 
+-implemented sockethelper.cpp
+functions in fileSys.cpp
+	ls
+	stat
+collaborated on server.cpp
+
+
+
+
+
+//// My own rating on the functionality ///////////////////
+Rating: A
+Explanation: 
+-all functions run correctly 
+-created helper class to ensure that the message is received fully
+-condensed shell to have efficient easy readable code
+
+
+
+//// Test cases ///////////////////////////////////////////
+Test case #1: ls
+Results: empty directory
+
+
+Test case #2: mkdir dir1
+Results: success
+
+Test case #3: mkdir dir2
+Results: success
+
+Test case #4: ls
+Results: dir1 / dir2 /
+
+Test case #5: cd dir1
+Results: success
+
+Test case #6: create file1
+Results: success
+
+Test case #7: append file1 helloworld!
+Results: success
+
+Test case #8: stat file1
+Results:
+Inode block: 4
+Bytes in file: 11
+Number of space Blocks: space 11
+First block: 0
+
+Test case #9: ls
+Results:
+file1
+
+Test case #10: cat file1
+Results:
+helloworld!
+
+Test case #11: head file1 5
+Results:
+hello
+
+Test case #12: rm file2
+Results:
+503: File does not exists
+
+
+Test case #14: create file1
+Results:
+502: File exists
+
+Test case #15: rm file1
+Results:
+success
+
+Test case #16: ls
+Results:
+empty directory
+
+Test case #17: home
+Results:
+Success
+
+Test case #18: ls
+Results:
+dir1 / dir2 /
+
+Test case # stat dir1
+Results:
+dir name: dir1
+Directory Block: 2
+
+
