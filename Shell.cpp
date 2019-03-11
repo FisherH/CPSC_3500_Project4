@@ -439,7 +439,6 @@ Shell::Command Shell::parse_command(string command_str)
   return command;
 }
 
-
 void Shell:: print_response(string command , string response)
 {
   stringstream ss(response);
@@ -452,7 +451,7 @@ void Shell:: print_response(string command , string response)
   //seeing if the response was successful
   //if(stoi(response.substr(0,3).c_str())==200)
     if(command == "ls" || command == "head" || command =="stat" || command == "cat")
-      for (int ii=3; ii < halfResponse.size(); ii++)  
+      for (int ii=3; ii < halfResponse.size(); ii++)  // bugbug print all resposne lines
         cout<<halfResponse[ii]<<endl;
 
   // print out just the error returned from server

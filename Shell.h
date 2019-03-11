@@ -1,5 +1,4 @@
 // CPSC 3500: Shell
-//Authors: Michelle Simoni, Fisher Harris, Jack Arnold
 // Implements a basic shell (command line interface) for the file system
 
 #ifndef SHELL_H
@@ -90,19 +89,10 @@ class Shell {
     // Remote procedure call on stat
     void stat_rpc(string fname);
 
-
-    //will read he response form the server by using the socket helper class
-    //to call the socket helper readline function
-    void receive_response(string command);
-
-    //called in receive response will print the response
     void print_response(string command, string response);
 
-    //helper function that is called in all remote procedures to 
-    //shorten the code and make everything more readable
-    void remote_procedure(string commandLine, string command);
+    void receive_response(string command);
 
-    //helper object to make sure the full response is recieved 
     SocketHelper socketHelper;
 };
 

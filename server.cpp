@@ -17,8 +17,8 @@ using namespace std;
 
 //constant variables
 
-const int BACKLOG=5;
-const int BUFFER_SIZE=2048;
+const int BACKLOG = 5;
+const int BUFFER_SIZE = 2048;
 
 void error(char* message)
 {
@@ -26,52 +26,43 @@ void error(char* message)
   exit(0);
 }
 
-
 int main(int argc, char* argv[]) {
 
   //variables
   int sockfd, newsockfd, port,clilen;
-  //const the buffer
   char buffer[BUFFER_SIZE];
 
-  //creating socket addresses
+  //socket addresses
   struct sockaddr_in server_ad, clientAd;
   struct sockaddr_storage their_addr;
 
-  //the connecting address info
+  //address info
   socklen_t sin_size;
   if (argc <2) {
     cout << "Usage: ./nfsserver port#\n";
     return -1;
   }
-  port = atoi(argv[1]);
-  cout<<"Connecting to port"<< port<<endl;
 
-  //networking part: create the socket and accept the client connection
-  sockfd=socket(AF_INET,SOCK_STREAM,0);
-  if(sockfd<0)
-    {
-      perror("ERROR opening socket");
-      exit(1);
-    //    error((char*)"ERROR opening socket");
-    }
+  //create socket and accept client connection
+  port = atoi(argv[1]);
+  cout<<"Connecting to port..."<< port<<endl;
+  sockfd = socket(AF_INET,SOCK_STREAM, 0);
+
+  if(sockfd<0) {
+    perror("ERROR opening socket");
+    exit(1);
+  }
+  
   //now will bind the socket to a port number
   bzero((char*) &server_ad, sizeof(server_ad));
   server_ad.sin_family=AF_INET;
   server_ad.sin_addr.s_addr = INADDR_ANY;
   server_ad.sin_port= htons(port);
   memset(server_ad.sin_zero, '\0', sizeof server_ad.sin_zero);
-  
-  
-  //  if( bind(sockfd,(struct sockaddr *) &server_ad, siezof(struct server_ad))==-1)
-  // error((char*)"ERROR on bind");
 
   int bindCheck= ::bind(sockfd,(struct sockaddr *) &server_ad, sizeof(struct sockaddr));
   if(bindCheck == -1)
-    {
-      cout<<"could not bind socket.\n";
-    }
-//  int sock; //change this line when necessary!
+    cout<<"Could not bind socket.\n";
 
   //waiting for the clien to make a connection
   if(:: listen(sockfd, BACKLOG)<0)
@@ -79,55 +70,38 @@ int main(int argc, char* argv[]) {
 
   //accept a request from client
   newsockfd= ::accept(sockfd,(struct sockaddr*) &clientAd, (socklen_t*) &clilen);
-    if(newsockfd <0)
-      error((char*)"ERROR on accept");
-
-
-  printf("we have a client connection\n");
+  if(newsockfd <0)
+    error((char*)"ERROR on accept");
 
   //mount the file system
+  printf("Client connecting...\n");
   FileSys fs;
-  fs.mount(newsockfd); //assume that sock is the new socket created
-  //for a TCP connection between the client and the server.
+  fs.mount(newsockfd);
 
-
-  //loop: get the command from the client and invoke the file
-  //system operation which returns the results or error messages back to the clinet
-  //until the client closes the TCP connection.
-
-  // use helper class to read lf terminated lines from the client
+  // use helper class to read lines from the client
   SocketHelper socketHelper;
   socketHelper.read_socket = newsockfd;
 
   int n;
   while(1) {
     bzero(buffer, BUFFER_SIZE);
-
     socketHelper.Reset();
     n=socketHelper.ReadLine(buffer, sizeof(buffer));
-    //n= recv(newsockfd, buffer, sizeof(buffer), 0 );
-
-    //printf("received '%d' bytes command='%s'\n", n, buffer);
-
     fs.execute_command(buffer);
 
     if(n==0)
-      {
-        perror("connection closed");
-        break;
-      }
+    {
+      perror("Connection closed.");
+      break;
+    }
   }
 
-  //closing the socket
+  //close the sockets
   close(newsockfd);
-
-
-  //close the listening socket
   close(sockfd);
 
-  //unmout the file system
+  //unmout file system
   fs.unmount();
- 
   return 0;
 }
 
