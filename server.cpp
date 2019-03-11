@@ -1,3 +1,5 @@
+//Authors: Michelle Simoni, Jack Arnold , Fisher Harris
+//server class to establish a connectin from the port to the client
 #include <iostream>
 #include <string>
 #include <cstdlib>
