@@ -394,44 +394,46 @@ Shell::Command Shell::parse_command(string command_str)
     }
   }
 
+  string cmd = command.name;
+
   // Check for empty command line
   if (num_tokens == 0) 
     return empty;
     
   // Check for invalid command lines
-  if (command.name == "ls" || command.name == "home" || command.name == "quit")
+  if (cmd == "ls" || cmd == "home" || cmd == "quit")
   {
     if (num_tokens != 1) {
-      cerr << "Invalid command line: " << command.name;
+      cerr << "Invalid command line: " << cmd;
       cerr << " has improper number of arguments" << endl;
       return empty;
     }
   }
 
-  else if (command.name == "mkdir" ||
-      command.name == "cd"    ||
-      command.name == "rmdir" ||
-      command.name == "create"||
-      command.name == "cat"   ||
-      command.name == "rm"    ||
-      command.name == "stat")
+  else if (cmd == "mkdir" ||
+          cmd == "cd"    ||
+          cmd == "rmdir" ||
+          cmd == "create"||
+          cmd == "cat"   ||
+          cmd == "rm"    ||
+          cmd == "stat")
   {
     if (num_tokens != 2) {
-      cerr << "Invalid command line: " << command.name;
+      cerr << "Invalid command line: " << cmd;
       cerr << " has improper number of arguments" << endl;
       return empty;
     }
   }
-  else if (command.name == "append" || command.name == "head")
+  else if (cmd == "append" || cmd == "head")
   {
     if (num_tokens != 3) {
-      cerr << "Invalid command line: " << command.name;
+      cerr << "Invalid command line: " << cmd;
       cerr << " has improper number of arguments" << endl;
       return empty;
     }
   }
   else {
-    cerr << "Invalid command line: " << command.name;
+    cerr << "Invalid command line: " << cmd;
     cerr << " is not a command" << endl; 
     return empty;
   } 
@@ -491,12 +493,9 @@ void Shell::receive_response(string command)
   // now read body
   if (bodyLength)
   {
-    //printf("reading body bytes %d\n", bodyLength);
     socketHelper.ReadLine(line, sizeof(line), bodyLength);
     response += line;
   }
-
-  //printf("total response: %s\n", response.c_str());
-
+  
   print_response(command, response);
 }

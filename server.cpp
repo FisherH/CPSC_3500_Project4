@@ -10,7 +10,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdio.h>
-
 #include "SocketHelper.h"
 
 using namespace std;
