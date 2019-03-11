@@ -32,6 +32,8 @@ class Shell {
     // Execute a script.
     void run_script(char *file_name);
 
+    void shutdown();
+
   private:
     
     int cs_sock; //socket to the network file system server

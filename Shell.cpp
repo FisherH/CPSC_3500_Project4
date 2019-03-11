@@ -301,6 +301,12 @@ void Shell::run_script(char *file_name)
   infile.close();
 }
 
+void Shell::shutdown()
+{
+  close(cs_sock);
+  cout << "shutting down..." << endl;
+}
+
 
 // Executes the command. Returns true for quit and false otherwise.
 bool Shell::execute_command(string command_str)
@@ -358,7 +364,7 @@ bool Shell::execute_command(string command_str)
     stat_rpc(command.file_name);
   
   else if (command.name == "quit")
-    return true;
+    shutdown();//return true;
 
   return false;
 }
